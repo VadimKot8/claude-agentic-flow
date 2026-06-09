@@ -1,0 +1,443 @@
+{
+	"info": {
+		"_postman_id": "4b6f1201-9a7b-402a-9426-ff2c38521ba9",
+		"name": "MCP Web Search",
+		"description": "Postman collection to test the Adaptive Knowledge MCP Server (Tavily + ChromaDB) using the streamable-http transport.\n\nThe MCP streamable-http transport replies with a text/event-stream (SSE) body. Test scripts below parse the last JSON-RPC `data:` line and assert on the tool result. The 'Phase 2 - Cache' requests exercise the ChromaDB cache: web_search write-back, db_search cache hit shape, and a deterministic version-mismatch cache_miss.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Initialize Connection",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json, text/event-stream",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"jsonrpc\": \"2.0\",\n    \"id\": 1,\n    \"method\": \"initialize\",\n    \"params\": {\n        \"protocolVersion\": \"2024-11-05\",\n        \"capabilities\": {},\n        \"clientInfo\": {\n            \"name\": \"PostmanTestClient\",\n            \"version\": \"1.0.0\"\n        }\n    }\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Initial handshake with the MCP server to negotiate protocol version and capabilities. This request extracts the Mcp-Session-Id header from the response and saves it to the mcpSessionId collection variable."
+			},
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var sessionId = pm.response.headers.get(\"Mcp-Session-Id\");",
+							"if (sessionId) {",
+							"    pm.collectionVariables.set(\"mcpSessionId\", sessionId);",
+							"    console.log(\"Saved Mcp-Session-Id: \" + sessionId);",
+							"} else {",
+							"    console.log(\"No Mcp-Session-Id header returned in the response.\");",
+							"}",
+							"pm.test(\"initialize returns 200\", function () {",
+							"    pm.response.to.have.status(200);",
+							"});",
+							"pm.test(\"Mcp-Session-Id header present\", function () {",
+							"    pm.expect(sessionId, \"Mcp-Session-Id\").to.be.a(\"string\").and.not.empty;",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			]
+		},
+		{
+			"name": "2. Send Initialized Notification",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json, text/event-stream",
+						"type": "text"
+					},
+					{
+						"key": "Mcp-Session-Id",
+						"value": "{{mcpSessionId}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"jsonrpc\": \"2.0\",\n    \"method\": \"notifications/initialized\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Sends a notification to the server indicating that the client is fully initialized and ready to send requests. No response is expected."
+			}
+		},
+		{
+			"name": "3. List Tools",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json, text/event-stream",
+						"type": "text"
+					},
+					{
+						"key": "Mcp-Session-Id",
+						"value": "{{mcpSessionId}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"jsonrpc\": \"2.0\",\n    \"id\": 2,\n    \"method\": \"tools/list\"\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Retrieves the list of tools exposed by the MCP server."
+			},
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var rpc = (function parseRpc(text) {",
+							"    var lines = String(text).split(/\\r?\\n/);",
+							"    var jsonStr = null;",
+							"    for (var i = 0; i < lines.length; i++) {",
+							"        if (lines[i].indexOf('data:') === 0) { jsonStr = lines[i].substring(5).trim(); }",
+							"    }",
+							"    return jsonStr ? JSON.parse(jsonStr) : null;",
+							"})(pm.response.text());",
+							"pm.test(\"tools/list returns 200\", function () { pm.response.to.have.status(200); });",
+							"pm.test(\"web_search, db_search and usage are registered\", function () {",
+							"    pm.expect(rpc, \"json-rpc payload\").to.not.be.null;",
+							"    var names = (rpc.result.tools || []).map(function (t) { return t.name; });",
+							"    pm.expect(names).to.include('web_search');",
+							"    pm.expect(names).to.include('db_search');",
+							"    pm.expect(names).to.include('usage');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			]
+		},
+		{
+			"name": "4. Call Web Search (Phase 2: seeds cache write-back)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json, text/event-stream",
+						"type": "text"
+					},
+					{
+						"key": "Mcp-Session-Id",
+						"value": "{{mcpSessionId}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"jsonrpc\": \"2.0\",\n    \"id\": 3,\n    \"method\": \"tools/call\",\n    \"params\": {\n        \"name\": \"web_search\",\n        \"arguments\": {\n            \"query\": \"how to build langchain agents\",\n            \"framework_name\": \"langchain\",\n            \"framework_version\": \"0.3.1\"\n        }\n    }\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Calls the web_search tool to perform a live search query via Tavily, returning the answer string immediately and queuing a cache write-back asynchronously. This seeds the ChromaDB cache so the subsequent db_search can hit. Allow a few seconds for the async write-back before running db_search."
+			},
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var rpc = (function parseRpc(text) {",
+							"    var lines = String(text).split(/\\r?\\n/);",
+							"    var jsonStr = null;",
+							"    for (var i = 0; i < lines.length; i++) {",
+							"        if (lines[i].indexOf('data:') === 0) { jsonStr = lines[i].substring(5).trim(); }",
+							"    }",
+							"    return jsonStr ? JSON.parse(jsonStr) : null;",
+							"})(pm.response.text());",
+							"pm.test(\"web_search returns 200\", function () { pm.response.to.have.status(200); });",
+							"pm.test(\"web_search returns a non-empty answer string\", function () {",
+							"    pm.expect(rpc, \"json-rpc payload\").to.not.be.null;",
+							"    pm.expect(rpc.result, \"result\").to.exist;",
+							"    var content = rpc.result.content;",
+							"    pm.expect(content, \"content array\").to.be.an('array').that.is.not.empty;",
+							"    var text = content[0].text;",
+							"    pm.expect(text, \"answer text\").to.be.a('string').and.not.empty;",
+							"});",
+							"pm.test(\"web_search did not return an MCP error envelope\", function () {",
+							"    var text = rpc.result.content[0].text;",
+							"    pm.expect(text.indexOf('[MCP Error'), 'answer should not be an error envelope').to.equal(-1);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			]
+		},
+		{
+			"name": "5. Call DB Search (Phase 2: expect cache hit shape)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json, text/event-stream",
+						"type": "text"
+					},
+					{
+						"key": "Mcp-Session-Id",
+						"value": "{{mcpSessionId}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"jsonrpc\": \"2.0\",\n    \"id\": 4,\n    \"method\": \"tools/call\",\n    \"params\": {\n        \"name\": \"db_search\",\n        \"arguments\": {\n            \"query\": \"how to build langchain agents\",\n            \"framework_name\": \"langchain\",\n            \"framework_version\": \"0.3.1\"\n        }\n    }\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Queries the local ChromaDB vector cache for previously resolved answers matching the query, framework name, and framework version. Run this AFTER request 4 (and after the async write-back has completed, ~2-5s) to observe a cache hit. Validates the Spec §3 db_search response shape."
+			},
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var rpc = (function parseRpc(text) {",
+							"    var lines = String(text).split(/\\r?\\n/);",
+							"    var jsonStr = null;",
+							"    for (var i = 0; i < lines.length; i++) {",
+							"        if (lines[i].indexOf('data:') === 0) { jsonStr = lines[i].substring(5).trim(); }",
+							"    }",
+							"    return jsonStr ? JSON.parse(jsonStr) : null;",
+							"})(pm.response.text());",
+							"",
+							"function toolResult(rpc) {",
+							"    // FastMCP returns structuredContent for dict-returning tools; fall back to content[0].text.",
+							"    if (rpc.result && rpc.result.structuredContent) { return rpc.result.structuredContent; }",
+							"    return JSON.parse(rpc.result.content[0].text);",
+							"}",
+							"",
+							"pm.test(\"db_search returns 200\", function () { pm.response.to.have.status(200); });",
+							"",
+							"var result = null;",
+							"pm.test(\"db_search returns a valid status (success or cache_miss)\", function () {",
+							"    pm.expect(rpc, \"json-rpc payload\").to.not.be.null;",
+							"    result = toolResult(rpc);",
+							"    pm.expect(result.status, \"status\").to.be.oneOf(['success', 'cache_miss']);",
+							"});",
+							"",
+							"pm.test(\"on cache hit, response matches Spec shape\", function () {",
+							"    if (!result || result.status !== 'success') {",
+							"        pm.expect.fail('Expected a cache hit. If this fails, ensure request 4 ran first and the async write-back (~2-5s) completed before running this request.');",
+							"    }",
+							"    pm.expect(result, 'answer').to.have.property('answer');",
+							"    pm.expect(result.answer, 'answer').to.be.a('string').and.not.empty;",
+							"    pm.expect(result, 'timestamp').to.have.property('timestamp');",
+							"    pm.expect(result.timestamp, 'timestamp').to.be.a('number');",
+							"    pm.expect(result, 'similarity_score').to.have.property('similarity_score');",
+							"    pm.expect(result.similarity_score, 'similarity_score').to.be.a('number');",
+							"    pm.expect(result.similarity_score, 'similarity_score >= threshold').to.be.at.least(0.75);",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			]
+		},
+		{
+			"name": "6. Call DB Search - Version Mismatch (Phase 2: expect cache_miss)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json, text/event-stream",
+						"type": "text"
+					},
+					{
+						"key": "Mcp-Session-Id",
+						"value": "{{mcpSessionId}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"jsonrpc\": \"2.0\",\n    \"id\": 6,\n    \"method\": \"tools/call\",\n    \"params\": {\n        \"name\": \"db_search\",\n        \"arguments\": {\n            \"query\": \"how to build langchain agents\",\n            \"framework_name\": \"langchain\",\n            \"framework_version\": \"9.9.9-nonexistent\"\n        }\n    }\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Deterministic Phase 2 test of invariant I-5: a mismatched framework_version must always yield cache_miss regardless of semantic similarity, because the strict metadata filter pins the version exactly. Uses the same query/framework_name as request 4 but a version that was never cached."
+			},
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var rpc = (function parseRpc(text) {",
+							"    var lines = String(text).split(/\\r?\\n/);",
+							"    var jsonStr = null;",
+							"    for (var i = 0; i < lines.length; i++) {",
+							"        if (lines[i].indexOf('data:') === 0) { jsonStr = lines[i].substring(5).trim(); }",
+							"    }",
+							"    return jsonStr ? JSON.parse(jsonStr) : null;",
+							"})(pm.response.text());",
+							"",
+							"function toolResult(rpc) {",
+							"    if (rpc.result && rpc.result.structuredContent) { return rpc.result.structuredContent; }",
+							"    return JSON.parse(rpc.result.content[0].text);",
+							"}",
+							"",
+							"pm.test(\"db_search returns 200\", function () { pm.response.to.have.status(200); });",
+							"pm.test(\"mismatched framework_version yields cache_miss\", function () {",
+							"    pm.expect(rpc, \"json-rpc payload\").to.not.be.null;",
+							"    var result = toolResult(rpc);",
+							"    pm.expect(result.status, 'status').to.eql('cache_miss');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			]
+		},
+		{
+			"name": "7. Call Usage",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					},
+					{
+						"key": "Accept",
+						"value": "application/json, text/event-stream",
+						"type": "text"
+					},
+					{
+						"key": "Mcp-Session-Id",
+						"value": "{{mcpSessionId}}",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"jsonrpc\": \"2.0\",\n    \"id\": 5,\n    \"method\": \"tools/call\",\n    \"params\": {\n        \"name\": \"usage\",\n        \"arguments\": {}\n    }\n}"
+				},
+				"url": {
+					"raw": "{{baseUrl}}",
+					"host": [
+						"{{baseUrl}}"
+					]
+				},
+				"description": "Reads in-memory counters to display API usage metrics, estimated costs, and remaining free calls."
+			},
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"exec": [
+							"var rpc = (function parseRpc(text) {",
+							"    var lines = String(text).split(/\\r?\\n/);",
+							"    var jsonStr = null;",
+							"    for (var i = 0; i < lines.length; i++) {",
+							"        if (lines[i].indexOf('data:') === 0) { jsonStr = lines[i].substring(5).trim(); }",
+							"    }",
+							"    return jsonStr ? JSON.parse(jsonStr) : null;",
+							"})(pm.response.text());",
+							"",
+							"function toolResult(rpc) {",
+							"    if (rpc.result && rpc.result.structuredContent) { return rpc.result.structuredContent; }",
+							"    return JSON.parse(rpc.result.content[0].text);",
+							"}",
+							"",
+							"pm.test(\"usage returns 200\", function () { pm.response.to.have.status(200); });",
+							"pm.test(\"usage returns the three metric fields\", function () {",
+							"    pm.expect(rpc, \"json-rpc payload\").to.not.be.null;",
+							"    var result = toolResult(rpc);",
+							"    pm.expect(result, 'total_web_searches').to.have.property('total_web_searches');",
+							"    pm.expect(result, 'estimated_cost_usd').to.have.property('estimated_cost_usd');",
+							"    pm.expect(result, 'remaining_free_calls').to.have.property('remaining_free_calls');",
+							"});"
+						],
+						"type": "text/javascript"
+					}
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://127.0.0.1:8000/mcp",
+			"type": "string"
+		},
+		{
+			"key": "mcpSessionId",
+			"value": "",
+			"type": "string"
+		}
+	]
+}

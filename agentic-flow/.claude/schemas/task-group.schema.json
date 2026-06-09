@@ -1,0 +1,162 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "task-group.schema.json",
+  "title": "TaskGroup",
+  "description": "Schema for a planner-agent task group file. See .claude/PROTOCOL.md for full contract.",
+  "type": "object",
+  "required": ["task", "group", "summary", "depends_on_tasks", "subtasks"],
+  "additionalProperties": false,
+  "properties": {
+    "task": {
+      "type": "string",
+      "description": "Human-readable group name (e.g. 'Voter Management')"
+    },
+    "group": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Stable snake_case identifier for this group (e.g. 'voter_management'). Immutable after creation."
+    },
+    "summary": {
+      "type": "string",
+      "description": "One sentence describing what the group achieves end-to-end."
+    },
+    "depends_on_tasks": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+      "description": "Stable group ids (not filenames) of groups that must be fully done before this group starts.",
+      "uniqueItems": true
+    },
+    "subtasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/Subtask" }
+    }
+  },
+  "definitions": {
+    "Subtask": {
+      "type": "object",
+      "required": [
+        "id", "title", "marker", "depends_on",
+        "skills", "target_paths", "produces", "consumes",
+        "instruction", "constraints", "acceptance_criteria",
+        "spec_ref", "state"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]+-[A-Z0-9-]+$",
+          "description": "Unique task identifier in format GROUP-NNN (e.g. VOTER-001, VOTER-REV-1)."
+        },
+        "title": {
+          "type": "string",
+          "description": "Short imperative sentence describing what must be done."
+        },
+        "marker": {
+          "type": "string",
+          "enum": ["CONFIG", "API", "DEVELOP", "TEST", "POSTMAN", "REVIEW"],
+          "description": "Bare token dispatch key. See PROTOCOL.md §5 for agent routing."
+        },
+        "depends_on": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true,
+          "description": "IDs of tasks (sibling or cross-group) that must be done before this task starts."
+        },
+        "skills": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Skill names the worker must activate (e.g. ['implement-service', 'implement-mapper'])."
+        },
+        "target_paths": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Repository-relative paths of files this task creates or modifies."
+        },
+        "produces": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fully-qualified Java types or file paths this task creates (enables dependency analysis and Postman controller detection)."
+        },
+        "consumes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Fully-qualified types or generated symbols this task depends on (avoids workers needing to grep the repo)."
+        },
+        "instruction": {
+          "type": "string",
+          "description": "What to build — pure instruction, no acceptance criteria or constraints here."
+        },
+        "constraints": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Spec rules that limit how to build it (e.g. 'No @Transactional', '409 via real DB constraint')."
+        },
+        "acceptance_criteria": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The sole contract for DEVELOP and TEST tasks. Non-empty on DEVELOP/TEST; empty array on CONFIG/REVIEW. Single-sourced — not duplicated in instruction."
+        },
+        "api_format": {
+          "type": ["string", "null"],
+          "enum": ["openapi", "protobuf", "asyncapi", "soap", null],
+          "description": "MUST be set on [API] tasks only. MUST be null or absent on all other markers."
+        },
+        "user_stories_covered": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "MUST be set on [REVIEW] tasks only. Lists user stories verified in this review."
+        },
+        "spec_ref": {
+          "type": "object",
+          "required": ["doc", "sections"],
+          "additionalProperties": false,
+          "description": "Pointer to the architect spec sections relevant to this task.",
+          "properties": {
+            "doc": {
+              "type": "string",
+              "description": "Repo-relative path to the architecture document (e.g. '.flow/2-architecture/01_voter_management.md')."
+            },
+            "sections": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Stable section heading anchors within the doc (e.g. ['## Service Layer', '## Exception Strategy'])."
+            }
+          }
+        },
+        "state": {
+          "type": "object",
+          "required": ["status", "review_verdict", "rework_tasks"],
+          "additionalProperties": false,
+          "description": "Runtime execution state. Planner writes initial values; workers and Orchestrator mutate during execution.",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["pending", "in_progress", "done", "needs_rework"],
+              "description": "Current task status. See PROTOCOL.md §2 for the full state machine."
+            },
+            "review_verdict": {
+              "type": ["string", "null"],
+              "enum": ["APPROVE", "REQUEST_CHANGES", null],
+              "description": "Set by reviewer-agent on [REVIEW] tasks. Null until reviewed."
+            },
+            "rework_tasks": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Task IDs that need rework after a REQUEST_CHANGES verdict. Populated by reviewer-agent."
+            }
+          }
+        }
+      },
+      "if": {
+        "properties": { "marker": { "const": "API" } }
+      },
+      "then": {
+        "properties": {
+          "api_format": { "type": "string", "enum": ["openapi", "protobuf", "asyncapi", "soap"] }
+        },
+        "required": ["api_format"]
+      }
+    }
+  }
+}

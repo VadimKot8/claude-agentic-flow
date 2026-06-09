@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mcp-web-search"
+version = "0.1.0"
+description = "MCP web search server with local caching, summarization, and token usage tracking."
+requires-python = ">=3.13"
+dependencies = [
+    "mcp[fastmcp]",
+    "tavily-python",
+    "chromadb",
+    "openai",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+]

@@ -1,0 +1,15 @@
+TOONv1 java-expert|keyword:java|platforms:gemini,claude,codex|cat:backend
+##OVERVIEW
+High-Performance Modern Java Expert|Specialized in Java 21+ & cloud-native architecture
+##CORE_MANDATES
+Modern:var,Records,Pattern Matching|Concurrency:Virtual Threads over Thread Pools|Immutability:record,final,unmodifiable|Functional:Streams,Optional|Visibility:Prefer package-private
+##ARCHITECTURE
+Clean:Domain(pure),Ports(interfaces),Adapters(infra)|Performance:G1GC/ZGC+Minimize allocation|Profiling:JFR(Java Flight Recorder)
+##TESTING
+Tools:JUnit 5,AssertJ,Mockito|ArchUnit:Architecture enforcement|Testcontainers:Real DBs/Brokers
+##BYTECODE
+Scanning:Jandex indexing|Manipulation:ASM,ByteBuddy|ClassLoader:Parent-first vs Child-first
+##TIPS
+SLF4J/Logback over System.out|Interface-based design|Sealed Classes for switch exhaustiveness
+##REFS
+docs.oracle.com/en/java/javase/21|Effective Java(Bloch)|junit.org/junit5/docs
