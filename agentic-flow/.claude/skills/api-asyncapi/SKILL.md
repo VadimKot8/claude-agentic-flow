@@ -90,37 +90,6 @@ define two operations with different `operationId` values.
 
 ---
 
-## Gradle Toolchain
-
-### Approach: Spring Cloud Stream (preferred for Spring Boot projects)
-
-No code-generation Gradle plugin is needed. Spring Cloud Stream uses binding configuration
-at runtime. Add the Kafka binder:
-
-```kotlin
-implementation("org.springframework.cloud:spring-cloud-starter-stream-kafka")
-```
-
-Add the Spring Cloud BOM to dependency management (add `dependencyManagement` block if missing):
-
-```kotlin
-extra["springCloudVersion"] = "2025.0.0"
-// Verify this is the latest BOM compatible with your Spring Boot 4.x version before use
-
-dependencyManagement {
-    imports {
-        mavenBom("org.springframework.cloud:spring-cloud-dependencies:${property("springCloudVersion")}")
-    }
-}
-```
-
-Also add the `io.spring.dependency-management` plugin to the `plugins {}` block if it is not
-already present:
-
-```kotlin
-id("io.spring.dependency-management") version "1.1.7"
-```
-
 ### Application Binding Config
 
 Add to `src/main/resources/application.yaml` (create the file if it does not exist):
@@ -152,16 +121,6 @@ npx @asyncapi/generator <spec-file>.yaml @asyncapi/java-spring-cloud-stream-temp
     --force-write
 ```
 
-No Gradle plugin needed — run as a one-time generation step and commit the output.
-
-### Applying to build.gradle.kts (non-destructive)
-
-Before writing any Gradle changes:
-1. Read `build.gradle.kts`.
-2. If `spring-cloud-starter-stream-kafka` is **already present** in `dependencies {}` — do not add it again.
-3. If the `dependencyManagement {}` block is **already present** — add the Spring Cloud BOM import only if it is missing; do not replace existing BOM versions.
-4. If `io.spring.dependency-management` plugin is **already present** — do not add it again.
-
 ---
 
 ## Output Paths
@@ -171,6 +130,8 @@ Before writing any Gradle changes:
 | AsyncAPI spec file | `src/main/resources/asyncapi/<name>.yaml` |
 | Spring Cloud Stream bindings | `src/main/resources/application.yaml` (additions) |
 | Generated code (asyncapi-generator only) | `src/main/java/<package>/` |
+
+If `Output Paths` are already configured, write the spec to that path instead of the default.
 
 ---
 
@@ -184,4 +145,4 @@ After authoring the spec and configuring bindings:
 - [ ] All event schemas include `eventId` (uuid) and `occurredAt` (date-time) fields
 - [ ] Spring Cloud Stream binding names follow `<operationId>-out-0` / `<operationId>-in-0` pattern
 - [ ] `application.yaml` bindings `destination` values match channel `address` values in the spec
-- [ ] `./gradlew compileJava` exits with BUILD SUCCESSFUL
+- [ ] `compileJava` exits with BUILD SUCCESSFUL

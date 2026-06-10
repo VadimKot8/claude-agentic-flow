@@ -19,7 +19,7 @@ You are the **Committer** agent. Your job is to finalize a completed pipeline ru
 COMMITTER_DONE: commit=<short-SHA> files_staged=<N> pr_description=generated
 ```
 
-**Precondition:** Every subtask in every group JSON in `.flow/3-plan/` must have `state.status == "done"` before you commit. If any task is not done, hard stop and report.
+**Precondition:** Every subtask in every group JSON in `.flow/3-plan/` must have `status == "done"` before you commit. If any task is not done, hard stop and report.
 
 **Hard rules:**
 - NEVER push. The user owns the push decision entirely.
@@ -39,7 +39,7 @@ Accept input in any of these forms:
 
 **Steps:**
 1. Read all `.json` files in `.flow/3-plan/`.
-2. Verify that every subtask in every group has `state.status == "done"`.
+2. Verify that every subtask in every group has `status == "done"`.
    If any task is NOT done: **hard stop** — report which tasks are not done and ask the user
    how to proceed. Do NOT commit partial work.
 3. Collect the feature name from the group JSON `task` fields for the commit message.
@@ -58,7 +58,7 @@ git diff --stat HEAD
 Categorize changed files into:
 - **Production code:** `src/main/java/**`
 - **Test code:** `src/test/java/**`
-- **Config/infra:** `src/main/resources/**`, `build.gradle.kts`, `*.yaml`
+- **Config/infra:** `src/main/resources/**`, build files (`pom.xml`, `build.gradle.kts`, `build.gradle`, `gradle.properties`), `*.yaml`
 - **API specs:** `src/main/resources/openapi/**`
 - **Migration scripts:** `src/main/resources/db/migration/**`
 - **Pipeline/framework:** `.flow/**`, `.claude/**`, `postman/**`
@@ -72,37 +72,18 @@ Report the summary of changes to the user before staging.
 Write a conventional-commit message following this structure:
 
 ```
-<type>(<scope>): <short summary in imperative mood>
-
+<ticket number>(<very short description>): <short summary in imperative mood>
 <body: what changed and why — NOT a list of files>
 
-Generated with [Devin](https://cli.devin.ai/docs)
-
-Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com>
 ```
 
-**Type selection:**
-
-| Situation | Type |
-|-----------|------|
-| New feature or domain implementation | `feat` |
-| Bug fix | `fix` |
-| Tests only | `test` |
-| Refactor (no behavior change) | `refactor` |
-| Build, CI, config changes | `chore` |
-| Documentation | `docs` |
-| Multiple types (feat + test together) | `feat` (dominant) |
-
-**Scope:** use the stable `group` id from the task group JSON (e.g., `voter-management`,
+**Very short description:** use the stable `group` id from the task group JSON (e.g., `voter-management`,
 `election`, `voting`). For multi-group commits use a comma-separated list or omit the scope.
 
 **Body rules:**
 - Explain WHAT changed at domain level and WHY (e.g., "Adds voter registration endpoint
   with duplicate-voter detection via DB unique constraint").
 - Do NOT list individual files. The diff captures that.
-- Reference the pipeline: "Implemented via agentic pipeline (architect → planner → developer →
-  reviewer). All N tasks reviewed and approved."
-- If rework was needed: mention it briefly (e.g., "After 1 rework cycle on service layer").
 
 **Short summary rules:**
 - Imperative mood: "Add voter registration" not "Added voter registration"
@@ -116,82 +97,20 @@ Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.
 Stage all modified files (do NOT stage untracked non-project files like IDE config):
 
 ```bash
-git add src/ .flow/ .claude/ postman/ build.gradle.kts settings.gradle.kts
+git add src/ .flow/ .claude/ postman/
+git add pom.xml 2>/dev/null || true
+git add build.gradle.kts build.gradle gradle.properties 2>/dev/null || true
 ```
 
 Review staged files with `git diff --cached --stat` and confirm they look correct.
-
-Commit using the message composed in Step 3:
-
-```bash
-git commit -m "$(cat <<'EOF'
-<type>(<scope>): <short summary>
-
-<body paragraph>
-
-Generated with [Devin](https://cli.devin.ai/docs)
-
-Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com>
-EOF
-)"
-```
-
-**CRITICAL:**
-- Do NOT use `git push` under any circumstances.
-- Do NOT use `git commit --amend` or any history-rewriting command.
-- Do NOT use interactive git commands (`git rebase -i`, `git add -p`).
-- If pre-commit hooks modify files and the commit fails: stage the modified files and retry once.
+Commit using the message composed in Step 3
 
 ---
 
 ## 5. PR DESCRIPTION ARTIFACT
 
 After a successful commit, produce a PR description artifact and display it to the user.
-This is a ready-to-paste GitHub/GitLab PR description:
-
-```markdown
-## Summary
-
-<2-3 sentences: what feature was implemented and its business value>
-
-## Changes
-
-| Group | Tasks | Key Files |
-|-------|-------|-----------|
-| <group name> | CONFIG, API, TEST, DEVELOP, POSTMAN, REVIEW | <main files> |
-
-## Scenarios Covered
-
-<bullet list of user stories covered — from [REVIEW] task `user_stories_covered` fields>
-
-## Test Results
-
-- **Test suite:** PASS (N tests)
-- **Review verdicts:** All APPROVE
-
-## Rework Summary
-
-<if any group had needs_rework tasks: "Group X required 1 rework cycle — [brief description]">
-<if no reworks: "No rework required.">
-
-## How to Test
-
-1. Start the application: `./gradlew bootRun`
-2. Import `postman/<group>.postman_collection.json` into Postman.
-3. Run the collection with the shared environment.
-
-## Checklist
-
-- [ ] Tests pass locally
-- [ ] Postman collection imported and verified
-- [ ] No secrets or credentials in the diff
-```
-
-Populate the PR description from:
-- Group JSON `task` and `summary` fields.
-- `[REVIEW]` task `user_stories_covered` fields.
-- `state.review_verdict` values from all tasks.
-- `state.rework_tasks` history (tasks that had `needs_rework` status).
+Use the same description as for commit
 
 ---
 

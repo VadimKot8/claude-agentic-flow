@@ -21,41 +21,47 @@ Tests must verify real behavior, not mock behavior. Mocks are a means to isolate
 ## Anti-Pattern 1: Testing Mock Behavior
 
 **The violation:**
-```typescript
-// ❌ BAD: Testing that the mock exists
-test('renders sidebar', () => {
-  render(<Page />);
-  expect(screen.getByTestId('sidebar-mock')).toBeInTheDocument();
-});
+```java
+// ❌ BAD: Testing that the stub returns what you stubbed
+@Test
+void getsUserName() {
+    UserRepository repo = mock(UserRepository.class);
+    when(repo.findName(1L)).thenReturn("Alice");
+
+    assertEquals("Alice", repo.findName(1L));  // Only proves Mockito works!
+}
 ```
 
 **Why this is wrong:**
-- You're verifying the mock works, not that the component works
-- Test passes when mock is present, fails when it's not
+- You're verifying the mock works, not that the production code works
+- Test passes when stub is configured, fails when it's not
 - Tells you nothing about real behavior
 
 **your human partner's correction:** "Are we testing the behavior of a mock?"
 
 **The fix:**
-```typescript
-// ✅ GOOD: Test real component or don't mock it
-test('renders sidebar', () => {
-  render(<Page />);  // Don't mock sidebar
-  expect(screen.getByRole('navigation')).toBeInTheDocument();
-});
+```java
+// ✅ GOOD: Test real production logic through the class under test
+@Test
+void getsUserGreeting() {
+    UserRepository repo = mock(UserRepository.class);
+    when(repo.findName(1L)).thenReturn("Alice");
+    UserService service = new UserService(repo);
 
-// OR if sidebar must be mocked for isolation:
-// Don't assert on the mock - test Page's behavior with sidebar present
+    assertEquals("Hello, Alice!", service.greet(1L));  // Real logic exercised
+}
+
+// OR use the real repository (e.g. in-memory implementation) and don't mock at all
 ```
 
 ### Gate Function
 
 ```
-BEFORE asserting on any mock element:
-  Ask: "Am I testing real component behavior or just mock existence?"
+BEFORE asserting on any stubbed value or mock interaction:
+  Ask: "Am I testing real production behavior or just the stub configuration?"
 
-  IF testing mock existence:
-    STOP - Delete the assertion or unmock the component
+  IF testing stub configuration:
+    STOP - Delete the assertion or remove the mock
 
   Test real behavior instead
 ```
@@ -63,17 +69,22 @@ BEFORE asserting on any mock element:
 ## Anti-Pattern 2: Test-Only Methods in Production
 
 **The violation:**
-```typescript
+```java
 // ❌ BAD: destroy() only used in tests
-class Session {
-  async destroy() {  // Looks like production API!
-    await this._workspaceManager?.destroyWorkspace(this.id);
-    // ... cleanup
-  }
+public class Session {
+    public void destroy() {  // Looks like production API!
+        if (workspaceManager != null) {
+            workspaceManager.destroyWorkspace(id);
+        }
+        // ... cleanup
+    }
 }
 
 // In tests
-afterEach(() => session.destroy());
+@AfterEach
+void tearDown() {
+    session.destroy();
+}
 ```
 
 **Why this is wrong:**
@@ -83,20 +94,25 @@ afterEach(() => session.destroy());
 - Confuses object lifecycle with entity lifecycle
 
 **The fix:**
-```typescript
+```java
 // ✅ GOOD: Test utilities handle test cleanup
 // Session has no destroy() - it's stateless in production
 
-// In test-utils/
-export async function cleanupSession(session: Session) {
-  const workspace = session.getWorkspaceInfo();
-  if (workspace) {
-    await workspaceManager.destroyWorkspace(workspace.id);
-  }
+// In src/test/java/.../testutil/SessionTestUtils.java
+public final class SessionTestUtils {
+    public static void cleanupSession(Session session, WorkspaceManager manager) {
+        WorkspaceInfo workspace = session.getWorkspaceInfo();
+        if (workspace != null) {
+            manager.destroyWorkspace(workspace.id());
+        }
+    }
 }
 
 // In tests
-afterEach(() => cleanupSession(session));
+@AfterEach
+void tearDown() {
+    SessionTestUtils.cleanupSession(session, workspaceManager);
+}
 ```
 
 ### Gate Function
@@ -118,34 +134,38 @@ BEFORE adding any method to production class:
 ## Anti-Pattern 3: Mocking Without Understanding
 
 **The violation:**
-```typescript
+```java
 // ❌ BAD: Mock breaks test logic
-test('detects duplicate server', () => {
-  // Mock prevents config write that test depends on!
-  vi.mock('ToolCatalog', () => ({
-    discoverAndCacheTools: vi.fn().mockResolvedValue(undefined)
-  }));
+@Test
+void detectsDuplicateServer() {
+    // Mock prevents config write that test depends on!
+    ToolCatalog catalog = mock(ToolCatalog.class);
+    var registry = new ServerRegistry(catalog);
 
-  await addServer(config);
-  await addServer(config);  // Should throw - but won't!
-});
+    registry.addServer(config);
+    assertThrows(DuplicateServerException.class,
+        () -> registry.addServer(config));  // Should throw - but won't!
+}
 ```
 
 **Why this is wrong:**
-- Mocked method had side effect test depended on (writing config)
+- Mocked dependency had side effect test depended on (writing config)
 - Over-mocking to "be safe" breaks actual behavior
 - Test passes for wrong reason or fails mysteriously
 
 **The fix:**
-```typescript
+```java
 // ✅ GOOD: Mock at correct level
-test('detects duplicate server', () => {
-  // Mock the slow part, preserve behavior test needs
-  vi.mock('MCPServerManager'); // Just mock slow server startup
+@Test
+void detectsDuplicateServer() {
+    // Mock the slow part, preserve behavior test needs
+    ServerLauncher launcher = mock(ServerLauncher.class);  // Just mock slow server startup
+    var registry = new ServerRegistry(new ToolCatalog(launcher));
 
-  await addServer(config);  // Config written
-  await addServer(config);  // Duplicate detected ✓
-});
+    registry.addServer(config);  // Config written
+    assertThrows(DuplicateServerException.class,
+        () -> registry.addServer(config));  // Duplicate detected ✓
+}
 ```
 
 ### Gate Function
@@ -177,15 +197,15 @@ BEFORE mocking any method:
 ## Anti-Pattern 4: Incomplete Mocks
 
 **The violation:**
-```typescript
+```java
 // ❌ BAD: Partial mock - only fields you think you need
-const mockResponse = {
-  status: 'success',
-  data: { userId: '123', name: 'Alice' }
-  // Missing: metadata that downstream code uses
-};
+var mockResponse = new ApiResponse(
+    "success",
+    new UserData("123", "Alice"),
+    null  // Missing: metadata that downstream code uses
+);
 
-// Later: breaks when code accesses response.metadata.requestId
+// Later: NullPointerException when code accesses response.metadata().requestId()
 ```
 
 **Why this is wrong:**
@@ -197,14 +217,14 @@ const mockResponse = {
 **The Iron Rule:** Mock the COMPLETE data structure as it exists in reality, not just fields your immediate test uses.
 
 **The fix:**
-```typescript
+```java
 // ✅ GOOD: Mirror real API completeness
-const mockResponse = {
-  status: 'success',
-  data: { userId: '123', name: 'Alice' },
-  metadata: { requestId: 'req-789', timestamp: 1234567890 }
-  // All fields real API returns
-};
+var mockResponse = new ApiResponse(
+    "success",
+    new UserData("123", "Alice"),
+    new Metadata("req-789", 1234567890L)
+    // All fields real API returns
+);
 ```
 
 ### Gate Function
@@ -274,7 +294,7 @@ TDD cycle:
 
 | Anti-Pattern | Fix |
 |--------------|-----|
-| Assert on mock elements | Test real component or unmock it |
+| Assert on stubbed values | Test real production logic or remove the mock |
 | Test-only methods in production | Move to test utilities |
 | Mock without understanding | Understand dependencies first, mock minimally |
 | Incomplete mocks | Mirror real API completely |
@@ -283,8 +303,8 @@ TDD cycle:
 
 ## Red Flags
 
-- Assertion checks for `*-mock` test IDs
-- Methods only called in test files
+- Assertion directly verifies a value you just stubbed with `when(...).thenReturn(...)`
+- Production methods only called from test code
 - Mock setup is >50% of test
 - Test fails when you remove mock
 - Can't explain why mock is needed

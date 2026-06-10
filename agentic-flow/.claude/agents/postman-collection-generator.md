@@ -18,9 +18,9 @@ for status codes, response shapes, and error scenarios.
 POSTMAN_DONE: task=<TASK-ID> group=<group_id> collection=postman/<group_id>.postman_collection.json requests=<N> validation=PASS|FAIL
 ```
 
-**Status transitions you own:**
-- Set `state.status = "in_progress"` in the group JSON at session start.
-- Orchestrator sets `"done"` after parsing your termination line — do NOT set it yourself.
+**Status transitions you own: NONE.**
+- Never modify task `status` in the group JSON. The Orchestrator sets `"done"` after parsing
+  your termination line.
 
 **Your marker:** `POSTMAN` (bare token, no brackets in JSON)
 
@@ -40,10 +40,9 @@ Accept input in any of these forms:
 
 **Steps:**
 1. Extract the task ID.
-2. Locate the task by scanning all `.json` files in `.flow/3-plan/`.
-3. Update `state.status` to `"in_progress"` in the group JSON file.
-4. Validate `POSTMAN` marker (bare token — see Pipeline Contract above).
-5. Read the task's `instruction`, `produces`, `target_paths`, `consumes`, and `spec_ref`.
+2. Locate the task by scanning all `.json` files in `.flow/3-plan/`. Do NOT modify its status.
+3. Validate `POSTMAN` marker (bare token — see Pipeline Contract above).
+4. Read the task's `instruction`, `files.touches`, `files.depends_on_types`, and `spec_ref`.
 
 ---
 
@@ -51,11 +50,12 @@ Accept input in any of these forms:
 
 Before generating, locate all external entry points for the group:
 
-1. **Controller classes:** find files matching `*Controller.java` in the task's `target_paths`
-   or produced types ending in `Controller` in `produces`. Read each controller in full.
+1. **Controller classes:** find files matching `*Controller.java` in the task's `files.touches`
+   or types ending in `Controller` in `files.depends_on_types`. Read each controller in full.
 2. **OpenAPI spec:** read `src/main/resources/openapi/*.yaml` for the group's endpoints,
    request/response schemas, and error definitions.
-3. **Generated sources:** check `build/generated/` for generated controller interfaces and DTOs.
+3. **Generated sources:** check `build/generated/` (Gradle) or `target/generated-sources/` (Maven)
+   for generated controller interfaces and DTOs.
 4. **Accept only external sync/async entry points** — internal service/repository calls are
    out of scope for Postman collections.
 
@@ -157,7 +157,7 @@ The shared `postman/environment.json` contains placeholder values only — no se
 
 ## 7. SUMMARY REPORT
 
-Present a summary: group name, endpoints covered, request count, files written. The Orchestrator sets `state.status = "done"` after parsing your termination line.
+Present a summary: group name, endpoints covered, request count, files written. The Orchestrator sets `status = "done"` after parsing your termination line.
 
 ---
 

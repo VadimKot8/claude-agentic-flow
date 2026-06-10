@@ -1,6 +1,7 @@
 # Claude Code Agentic Pipeline — Framework Guide
 
-A supervised, multi-agent Spring Boot development pipeline.
+A supervised, multi-agent Java + Spring development pipeline (Spring Framework 6, Java 17+;
+Maven or Gradle).
 A pure-coordinator (`orchestrate`) dispatches specialist agents through four phases,
 pausing at human approval gates before irreversible work begins.
 
@@ -55,9 +56,9 @@ flowchart TD
     PM -->|"POSTMAN_DONE\nvalidation=PASS"| NEXT
     PM -->|"POSTMAN_DONE\nvalidation=FAIL"| STOP4(["🛑 Hard stop\nreport to user"])
 
-    REV -->|"REVIEWER_DONE"| G3(["⛔ Gate 3\nApprove review verdict"])
-    G3 -->|"verdict=APPROVE\nuser approves"| NEXT
-    G3 -->|"verdict=REQUEST_CHANGES\nor rework needed"| REWORK["reset rework tasks\nto needs_rework"]
+    REV -->|"REVIEWER_DONE\nverdict=APPROVE"| NEXT
+    REV -->|"REVIEWER_DONE\nverdict=REQUEST_CHANGES"| G3(["⛔ Gate 3\nApprove rework"])
+    G3 -->|"user approves\nrework"| REWORK["reset rework tasks\nto pending"]
     REWORK --> NEXT
 ```
 
@@ -76,9 +77,12 @@ flowchart TD
 | `reviewer` | sonnet | Multi-dimension review + runs full test suite | `REVIEWER_DONE: ...` |
 | `postman-collection-generator` | sonnet | Per-group Postman collection for external entry points | `POSTMAN_DONE: ...` |
 | `committer` | sonnet | Stage + commit with conventional-commit message; emit PR description | `COMMITTER_DONE: ...` |
+| `jira-content-agent` (optional) | sonnet | Seeds `.flow/1-brief/raw-task.md` from a JIRA ticket (requires the `visamcphub` MCP server) | — |
 
-Knowledge is offloaded to skills (`implement-*`, `api-*`, `test-*`, `springboot-*`,
-`java-expert`, `test-driven-development`, `etc`). Agents stay lightweight and pull patterns from skills.
+Knowledge is offloaded to skills (`implement-*`, `api-*`, `test-*`, `spring-patterns`,
+`spring-tdd`, `test-driven-development`, `verify`, etc.). Agents stay lightweight and pull
+patterns from skills. The `verify` skill is the shared quality gate used by both `developer`
+(post-implementation) and `reviewer` (pre-verdict).
 
 **Protocol contract ownership:**
 
@@ -86,7 +90,7 @@ Knowledge is offloaded to skills (`implement-*`, `api-*`, `test-*`, `springboot-
 |-------|----------------------|--------|
 | `orchestrate` (skill) | Yes — full file | Parses all termination lines, drives the state machine, owns dispatch matrix and dependency resolution |
 | `architect` | Yes — full file | Produces `ARCHITECT_DONE`, enforces coding policy (UUID IDs, no Records, Flyway) |
-| `planner` | Yes — full file | Writes task JSON files; needs §2 FSM, §3 full schema, §4 marker vocabulary |
+| `planner` | Yes — full file | Writes task JSON files; needs the Status State Machine, the full Task-Group Schema, and the Marker Vocabulary sections |
 | `api-agent`, `tester`, `developer`, `reviewer`, `committer`, `postman-collection-generator` | **No** | Each agent's `## Pipeline Contract` section contains only what that agent needs: its own termination line format, the status transitions it owns, its marker, and any agent-specific hard stops |
 
 This keeps worker agent context windows tight. `PROTOCOL.md` remains the canonical human reference and the authoritative source for Orchestrator and Planner.
@@ -100,6 +104,12 @@ Install the following before using this framework:
 ### Claude Code CLI
 - Install: https://docs.anthropic.com/en/docs/claude-code
 - Authenticate with your Anthropic account.
+
+### Toolchain
+- **Java 17+**
+- **Maven or Gradle** (the pipeline detects the tool from `pom.xml` vs `build.gradle(.kts)` —
+  see `CLAUDE.md` Build Task Vocabulary)
+- A **Spring Framework 6** project (Spring Boot optional — test skills adapt to either)
 
 ### MCP Servers / Plugins
 
@@ -121,9 +131,9 @@ Install MCP servers via Claude Code settings or your team's MCP configuration fi
 ├── .claude/
 │   ├── README.md         # This file
 │   ├── PROTOCOL.md       # Single source of truth: grammar, schema, coding policy
-│   ├── schemas/
-│   │   └── task-group.schema.json   # Machine-checkable task JSON schema
 │   ├── agents/           # Agent definition files (*.md)
+│   │   └── schemas/
+│   │       └── task-group.schema.json   # Machine-checkable task JSON schema
 │   ├── skills/           # Skill files (*/SKILL.md)
 │   └── agent-memory/     # Local agent memory folder
 └── src/                  # Java source tree
@@ -148,10 +158,11 @@ Install MCP servers via Claude Code settings or your team's MCP configuration fi
    ```
    The Orchestrator will check the pipeline state and dispatch the correct phase.
 
-4. **Approval gates** — you will be asked to approve at three points:
+4. **Approval gates** — you will be asked to approve at these points:
    - **Gate 1:** After architecture options are presented — choose an approach.
    - **Gate 2:** After the implementation plan is written — approve or request changes.
-   - **Gate 3:** After each group review verdict — approve or request rework.
+   - **Gate 3:** Only when a group review ends in `REQUEST_CHANGES` — approve the rework or
+     redirect it. An `APPROVE` verdict is reported and the pipeline continues automatically.
 
 5. **Commit** — after all tasks are done, run `/committer` or the Orchestrator will dispatch the committer agent automatically.
 
@@ -164,9 +175,10 @@ Full contract details are in `.claude/PROTOCOL.md`. That file is read by the Orc
 Key points (canonical source: `PROTOCOL.md`):
 
 - **Termination lines** are machine-readable and drive the state machine. Unknown termination lines trigger a hard stop.
-- **Status vocabulary:** `pending` → `in_progress` → `done`; `needs_rework` → `in_progress` → `done`. The value `"reviewed"` is forbidden.
-- **Task JSON schema** is at `.claude/schemas/task-group.schema.json`.
-- **Group completion** is detected by inspecting `state.status` on all subtasks — NOT by renaming files.
+- **Status vocabulary:** `pending` → `done`; `needs_rework` → `pending` → `done`. The values `"reviewed"` and `"in_progress"` are forbidden. Workers never modify status — only the Orchestrator sets `done`, and only after a successful termination line.
+- **Status fields are flat** on each subtask (`status`, `review_verdict`, `rework_tasks`) — there is no `state` wrapper object.
+- **Task JSON schema** is at `.claude/agents/schemas/task-group.schema.json`.
+- **Group completion** is detected by inspecting `status` on all subtasks — NOT by renaming files (see PROTOCOL.md Group Completion Detection).
 - **`DEVELOPER_DONE` with `tests=FAIL`** is a hard stop — the task is NOT marked done.
 
 ---
@@ -183,7 +195,7 @@ Key points (canonical source: `PROTOCOL.md`):
      - Any agent-specific hard stops
    - Do **not** add `Read .claude/PROTOCOL.md` — inline only what the agent needs.
 2. Add a row to the dispatch matrix in `.claude/skills/orchestrate/SKILL.md` (Section 5.2).
-3. Add the termination-line grammar to `.claude/PROTOCOL.md` (Section 1) — this keeps the canonical record for Orchestrator and humans.
+3. Add the termination-line grammar to `.claude/PROTOCOL.md` (Termination-Line Grammar section) — this keeps the canonical record for Orchestrator and humans.
 4. Create `.claude/agent-memory/<name>/MEMORY.md` from the blank template.
 
 ### Add a new skill

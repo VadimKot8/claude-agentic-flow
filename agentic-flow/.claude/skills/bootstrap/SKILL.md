@@ -90,7 +90,7 @@ Before bootstrapping a new project, ensure:
 1. **Claude Code CLI** is installed and authenticated.
 2. **MCP servers** are configured:
    - `web-search` (required by `CLAUDE.md` error protocol)
-3. **Java 21** and **Gradle 9.4+** are installed.
-4. The project already has a `build.gradle.kts` with Spring Boot dependencies.
+3. **Java 17+** and a build tool (**Maven** or **Gradle**) are installed.
+4. The project already has a build file (`pom.xml` or `build.gradle.kts`) with Spring Framework 6 dependencies.
 
 See `.claude/README.md` for the full prerequisites list.

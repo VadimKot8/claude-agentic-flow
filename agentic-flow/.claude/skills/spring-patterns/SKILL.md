@@ -1,26 +1,14 @@
 ---
-name: springboot-patterns
-description: "Spring Boot layering, bean lifecycle, JPA data-access and transaction patterns. Use when deciding HOW to structure a service, repository, or configuration class."
+name: spring-patterns
+description: "Spring layering, bean lifecycle, JPA data-access and transaction patterns. Use when deciding HOW to structure a service, repository, or configuration class."
 origin: ECC
 ---
 
-# Spring Boot Development Patterns
+# Spring Development Patterns
 
-Spring Boot architecture and API patterns for scalable, production-grade services.
-
----
-
-## Project Overrides (voting — Spring Boot 4)
-
-The following patterns from this skill are **overridden by project policy**:
-
-| Skill default | Project override |
-|---------------|-----------------|
-| `record CreateMarketRequest(...)` / `record MarketResponse(...)` | **Forbidden.** Use classic Java classes with getters/setters for all DTOs. No Records for data-carrier or API types. |
-| `JpaRepository<MarketEntity, Long>` | **Wrong ID type.** All entities use `UUID` primary keys. Use `JpaRepository<Entity, UUID>`. |
-| `MarketResponse.from(entity)` static factory on a record | **N/A.** Use MapStruct mapper interface instead (`@Mapper(componentModel = "spring")`). |
-
-All other patterns (controller → service → repository layering, `@Transactional`, caching, async, observability) apply normally.
+Spring Framework architecture and API patterns for scalable, production-grade services.
+Applies to Spring Framework 6 (Java 17+); Boot-specific conveniences (auto-configuration,
+`application.yml` property binding defaults) apply only when Spring Boot is on the classpath.
 
 ---
 

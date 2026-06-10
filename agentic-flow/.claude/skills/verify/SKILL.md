@@ -12,37 +12,34 @@ Used by the **developer** agent (post-implementation check) and the **reviewer**
 
 ## Verification Steps
 
-Run the following commands **in order**. Stop at the first failure and report it.
+Run the following tasks **in order** (command mapping for Gradle/Maven: see `CLAUDE.md`
+Build Task Vocabulary). Stop at the first failure and report it.
 
 ### Step 1 — Compile
 
-```bash
-bash ./gradlew compileJava
-```
+Run the compile task (`./gradlew compileJava` or `mvn compile`).
 
 **Pass criterion:** exit code 0, no compiler errors.
 **On failure:** report the full compiler error to the caller. Do NOT proceed to Step 2.
 
 ### Step 2 — Full Test Suite
 
-```bash
-bash ./gradlew test
-```
+Run the test task (`./gradlew test` or `mvn test`).
 
 **Pass criterion:** exit code 0, all tests pass (0 failures, 0 errors).
 **On failure:**
-- Extract the failing test names and failure messages from Gradle output.
+- Extract the failing test names and failure messages from the build output.
 - Report them in a structured block (see Output Format below).
 - Do NOT proceed to Step 3.
 
 ### Step 3 — Coverage (optional, if configured)
 
-```bash
-bash ./gradlew jacocoTestReport jacocoTestCoverageVerification
-```
+Run the coverage task (`./gradlew jacocoTestReport jacocoTestCoverageVerification` or
+`mvn jacoco:report jacoco:check`).
 
-Run this step **only if** `jacoco` is configured in `build.gradle.kts`.
-To check: look for `jacoco` plugin or `jacocoTestCoverageVerification` task in the build file.
+Run this step **only if** JaCoCo is configured in the build file.
+To check: look for the `jacoco` plugin / `jacocoTestCoverageVerification` task in
+`build.gradle.kts`, or the `jacoco-maven-plugin` in `pom.xml`.
 
 **Pass criterion:** exit code 0, coverage thresholds met.
 **On failure:** report which thresholds were violated (class, line, branch coverage).
@@ -92,14 +89,14 @@ It SHOULD be reported as a Major finding in a REVIEWER_DONE.
 After implementing a task:
 1. Run Step 1 (compile). Fix any compiler errors before proceeding.
 2. Run Step 2 (full test suite). If any test fails:
-   - Diagnose and fix (up to 3 Gradle loop attempts).
+   - Diagnose and fix (up to 3 build loop attempts).
    - If still failing after 3 attempts: save context to memory, emit `DEVELOPER_DONE: ... tests=FAIL`, and stop.
    - **Never** emit `DEVELOPER_DONE: ... tests=PASS` when tests are failing.
 3. If all tests pass: emit `DEVELOPER_DONE: ... tests=PASS`.
 
 ### Reviewer agent
 
-Before issuing any verdict (Section 3.9 of reviewer-agent.md):
+Before issuing any verdict (Section 3.8 of `.claude/agents/reviewer.md`):
 1. Run Step 2 (full test suite).
 2. If any tests fail: add a **Critical finding** titled "Test suite failure" and force verdict to `REQUEST_CHANGES`.
 3. Optionally run Step 3 (coverage) — report violations as Major findings.
@@ -107,7 +104,7 @@ Before issuing any verdict (Section 3.9 of reviewer-agent.md):
 
 ---
 
-## Gradle Loop (developer agent only)
+## Build Loop (developer agent only)
 
 On test failure, follow this repair loop (max 3 attempts):
 
@@ -115,8 +112,8 @@ On test failure, follow this repair loop (max 3 attempts):
 2. Read the production class(es) involved.
 3. Identify the root cause (missing logic, wrong return value, incorrect exception).
 4. Apply a targeted fix — do NOT change test code.
-5. Re-run `bash ./gradlew test --tests "<failing.TestClass>"` for fast feedback.
-6. If the targeted test passes, run the full `bash ./gradlew test` to confirm no regressions.
+5. Re-run the single failing test class (`./gradlew test --tests "<failing.TestClass>"` or `mvn test -Dtest=<FailingTestClass>`) for fast feedback.
+6. If the targeted test passes, run the full test task to confirm no regressions.
 7. If still failing after fix attempt 3: stop, save state to memory, emit `DEVELOPER_DONE tests=FAIL`.
 
 **Never change test code to make tests pass.** Tests define the contract; production code must conform.

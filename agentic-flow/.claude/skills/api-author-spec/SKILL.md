@@ -29,14 +29,12 @@ Extract from task description:
 - **Messages/Services:** For AsyncAPI/Protobuf/SOAP, identify methods/channels/operations.
 
 ### 2. Path Determination
-- **Primary:** Check `build.gradle.kts` for `inputSpec` or `sourceDir` — write to that path.
+- **Primary:** Check project configurations, if configured — write to that path.
 - **Default:** Use the canonical path from the active format skill.
 
 ### 3. Construction
 - Apply all naming rules from the active format skill (operationIds, schema names, tag names).
 - Cross-reference project memory for consistent naming across specs.
-- Use `$ref` for shared components; never inline repeated schemas.
-- Ensure all operations have an `operationId`.
 
 ## Rules
 - **Scope Discipline:** Only implement what is in the task description.

@@ -15,9 +15,10 @@ Activate before writing tests to verify that the target system is "testable" and
 ## Logic
 
 ### 1. Generated Source Verification
-- Check if `./gradlew openApiGenerate` has been run.
-- Inspect the output directory (typically `build/generated/sources/openapi/` or as configured in `build.gradle.kts`).
-- If missing: Run `bash ./gradlew openApiGenerate` and wait for completion.
+- Check if the OpenAPI code-generation task has been run (see `CLAUDE.md` Build Task Vocabulary).
+- Inspect the output directory (typically `build/generated/sources/openapi/` for Gradle,
+  `target/generated-sources/openapi/` for Maven, or as configured in the project).
+- If missing: Run the code-generation task and wait for completion.
 
 ### 2. Domain Dependency Check
 - Check for the existence of domain entities/classes referenced in the task description.

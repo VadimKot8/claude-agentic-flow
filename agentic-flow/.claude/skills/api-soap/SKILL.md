@@ -1,6 +1,6 @@
 ---
 name: api-soap
-description: "Use when the task requires authoring a WSDL 1.1/SOAP service contract, configuring the wsdl2java Gradle plugin, or verifying generated Service Endpoint Interface and request/response wrapper classes."
+description: "Use when the task requires authoring a WSDL 1.1/SOAP service contract, configuring the wsdl2java build plugin (Gradle or Maven), or verifying generated Service Endpoint Interface and request/response wrapper classes."
 ---
 
 # SOAP / WSDL Format Skill
@@ -104,64 +104,6 @@ Define a `ServiceFault` complex type in the XSD and declare it as a `<fault>` in
 
 ---
 
-## Gradle Toolchain
-
-### Required Plugin
-
-Add to the `plugins {}` block in `build.gradle.kts`:
-
-```kotlin
-id("com.github.bjornvester.wsdl2java") version "2.0.2"
-// Verify version 2.0.2 is compatible with Gradle 9.x; check https://github.com/bjornvester/wsdl2java for updates
-```
-
-### Required Dependencies
-
-Add to the `dependencies {}` block:
-
-```kotlin
-implementation("org.springframework.boot:spring-boot-starter-web-services")
-implementation("wsdl4j:wsdl4j:1.6.3")
-implementation("jakarta.xml.ws:jakarta.xml.ws-api:4.0.1")
-implementation("com.sun.xml.ws:jaxws-ri:4.0.2")
-```
-
-### Full Configuration Block
-
-Add after the `plugins {}` block:
-
-```kotlin
-wsdl2java {
-    wsdlDir.set(layout.projectDirectory.dir("src/main/resources/wsdl"))
-    generatedSourceDir.set(layout.buildDirectory.dir("generated-sources/wsdl2java"))
-    packageName.set("com.agents_test.voting.<domain>.ws")
-}
-
-sourceSets {
-    main {
-        java {
-            srcDir(layout.buildDirectory.dir("generated-sources/wsdl2java"))
-        }
-    }
-}
-
-tasks.compileJava {
-    dependsOn(tasks.wsdl2java)
-}
-```
-
-Replace `<domain>` with the actual domain name (e.g., `voter`, `election`).
-
-### Applying to build.gradle.kts (non-destructive)
-
-Before writing any Gradle changes:
-1. Read `build.gradle.kts`.
-2. If the `com.github.bjornvester.wsdl2java` plugin is **already present** — do not add it again.
-3. If the `wsdl2java {}` block is **already present** — add only missing settings; do not overwrite `wsdlDir`, `generatedSourceDir`, or `packageName`.
-4. Add only the missing pieces (plugin, config block, dependencies, `sourceSets`, `compileJava` dependency).
-
----
-
 ## Output Paths
 
 | What | Default Path |
@@ -173,15 +115,17 @@ Before writing any Gradle changes:
 XSD types may be embedded inline in the WSDL `<types>` section or in a separate `.xsd` file
 referenced via `<xsd:import schemaLocation="<Name>.xsd"/>`.
 
+If `Output Paths` are already configured, write the spec to that path instead of the default.
+
 ---
 
 ## Verification Checklist
 
-After running `./gradlew wsdl2java`:
+After running `wsdl2java` task:
 
 - [ ] WSDL file exists at `src/main/resources/wsdl/<Name>.wsdl`
 - [ ] Generated SEI (Service Endpoint Interface) class `<ServiceName>.java` exists in `build/generated-sources/wsdl2java/<package>/`
 - [ ] Generated request/response wrapper classes exist for each operation
 - [ ] `ServiceFault` exception class or wrapper generated
 - [ ] Service implementation class follows the generated SEI interface
-- [ ] `./gradlew compileJava` exits with BUILD SUCCESSFUL
+- [ ] `compileJava` task exits with BUILD SUCCESSFUL

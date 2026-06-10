@@ -1,12 +1,18 @@
 ---
-name: springboot-tdd
-description: "Spring Boot test mechanics: JUnit 5, Mockito, MockMvc, @DataJpaTest, Testcontainers, JaCoCo configuration, and assertion style. Use when WRITING the actual Spring test code in a [TEST] task."
+name: spring-tdd
+description: "Spring test mechanics: JUnit 5, Mockito, MockMvc, test slices, Testcontainers, JaCoCo configuration, and assertion style. Use when WRITING the actual Spring test code in a [TEST] task."
 origin: ECC
 ---
 
-# Spring Boot TDD Workflow
+# Spring TDD Workflow
 
-TDD guidance for Spring Boot services with 80%+ coverage (unit + integration).
+TDD guidance for Java + Spring services with 80%+ coverage (unit + integration).
+
+> **Boot vs plain Spring:** the slice annotations shown below (`@WebMvcTest`, `@DataJpaTest`,
+> `@SpringBootTest`) require Spring Boot on the classpath. On a plain Spring Framework 6
+> project, use plain JUnit 5 + Mockito for unit tests, `MockMvcBuilders.standaloneSetup(...)`
+> for web-layer tests, and `@SpringJUnitConfig` (Spring TestContext framework) for
+> integration tests.
 
 ## When to Use
 
@@ -116,39 +122,6 @@ class MarketRepositoryTest {
 - Use reusable containers for Postgres/Redis to mirror production
 - Wire via `@DynamicPropertySource` to inject JDBC URLs into Spring context
 
-## Coverage (JaCoCo)
-
-Gradle Kotlin DSL snippet (`build.gradle.kts`):
-```kotlin
-plugins {
-    jacoco
-}
-
-tasks.test {
-    finalizedBy(tasks.jacocoTestReport)
-}
-
-tasks.jacocoTestReport {
-    dependsOn(tasks.test)
-    reports {
-        xml.required.set(true)
-        html.required.set(true)
-    }
-}
-
-tasks.jacocoTestCoverageVerification {
-    violationRules {
-        rule {
-            limit {
-                minimum = "0.80".toBigDecimal()
-            }
-        }
-    }
-}
-```
-
-Run: `./gradlew test jacocoTestReport jacocoTestCoverageVerification`
-
 ## Assertions
 
 - Prefer AssertJ (`assertThat`) for readability
@@ -175,12 +148,5 @@ class VoterBuilder {
   }
 }
 ```
-
-## CI Commands
-
-- Run all tests: `./gradlew test`
-- Tests + coverage report: `./gradlew test jacocoTestReport`
-- Tests + coverage gate: `./gradlew test jacocoTestReport jacocoTestCoverageVerification`
-- Single test class: `./gradlew test --tests "com.agents_test.voting.VoterServiceTest"`
 
 **Remember**: Keep tests fast, isolated, and deterministic. Test behavior, not implementation details.

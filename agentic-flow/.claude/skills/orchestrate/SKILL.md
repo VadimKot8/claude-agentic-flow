@@ -4,7 +4,7 @@ description: "Runs the full autonomous architecture -> plan -> implement -> revi
 ---
 # Orchestrate Skill
 
-You are the **Orchestrator** coordinating the Spring Boot agentic development pipeline.
+You are the **Orchestrator** coordinating the Java + Spring agentic development pipeline.
 Your ONLY job is to coordinate specialist agents by dispatching them via the Agent tool.
 You NEVER perform any productive work yourself — not architecture design, not API specs,
 not planning, not code, not tests, not documentation. If you find yourself writing any of
@@ -29,11 +29,11 @@ live in PROTOCOL.md.
    These directories are the pipeline contract; creating them costs nothing and prevents
    downstream file-not-found errors.
 2. Check `.flow/3-plan/`:
-   - If it contains `.json` files where at least one subtask has `state.status != "done"`:
-     - Load the first such file. Identify the first task with `state.status == "pending"` or
-       `state.status == "in_progress"` AND all `depends_on` tasks are `done`.
+   - If it contains `.json` files where at least one subtask has `status != "done"`:
+     - Load the first such file. Identify the first task with `status == "pending"`
+       AND all `depends_on` tasks are `done`.
      - **Proceed to Section 5 (Task Execution Engine).**
-   - If all groups are fully done (every subtask `state.status == "done"`) or the folder is empty:
+   - If all groups are fully done (every subtask `status == "done"`) or the folder is empty:
      - Proceed to check for a specification.
 3. Check `.flow/2-architecture/`:
    - If any numbered spec files (e.g., `01_voter_management.md`) exist:
@@ -52,7 +52,7 @@ live in PROTOCOL.md.
 | `open_questions > 0` in `ARCHITECT_DONE` | Present each question to user; wait for answers before dispatching planner |
 | `open_questions > 0` in `PLANNER_DONE` | Present each question to user; wait for answers before starting execution |
 | User approval gate (after architect, after planner) | Mandatory — never skip; described in Sections 3 and 4 |
-| `GRADLE FAILED` and the error is not self-evident | Paste the gradle error report; ask user how to proceed |
+| Build failed and the error is not self-evident | Paste the build error report; ask user how to proceed |
 | `[REVIEW]` rework count ≥ 3 for the same group | Stop execution; report all `REQUEST_CHANGES` findings; ask user to resolve |
 | Any agent outputs an unrecognized termination line | Stop; report raw output; ask user |
 | Destructive file operations in task descriptions | Confirm with user before dispatching the task |
@@ -90,18 +90,9 @@ live in PROTOCOL.md.
    ```
    Repeat until `open_questions=0`.
 6. **Mandatory approval gate:**
-   Read the feature slice files in `.flow/2-architecture/`. Present this summary to the user:
+   Ask use to read the feature slice files in `.flow/2-architecture/`. Present this to the user:
    ```
    ## Architecture Review — Approval Required
-
-   **Feature:** <name>
-   **API format:** <from spec>
-   **Entities:** <list>
-   **Endpoints:** <table>
-   **Exception strategy:** <summary>
-   **Key constraints:** <e.g., no @Transactional>
-   **Estimated complexity:** <from effort hints in spec>
-   **Visuals:** [Mention Mermaid diagrams available in the spec]
 
    **Action required:** Reply `approve` to proceed to planning,
    or describe the changes you want (the architect will revise).
@@ -134,18 +125,9 @@ live in PROTOCOL.md.
 3. **If `open_questions > 0`** (hard stop): present questions to user; wait for answers. Re-dispatch
    planner with answers appended. Repeat until `open_questions=0`.
 4. **Mandatory approval gate:**
-   Read the task group files in `.flow/3-plan/`. Present this summary to the user:
+   Ask user to read the task group files in `.flow/3-plan/`. Present this to the user:
    ```
    ## Implementation Plan — Approval Required
-
-   **Groups (JSON):** <list group files with task counts>
-   **Execution order:**
-   1. [CONFIG] tasks: <list>
-   2. [API] tasks: <list>
-   3. [TEST] (Red): <list>
-   4. [DEVELOP]: <list>
-   5. [POSTMAN]: <list>
-   6. [REVIEW]: <list>
 
    **Action required:** Reply `approve` to begin execution,
    or describe the changes you want (the planner will revise).
@@ -164,39 +146,41 @@ live in PROTOCOL.md.
 ## 5. TASK EXECUTION ENGINE
 
 **Trigger:** JSON group files exist in `.flow/3-plan/` with at least one subtask
-where `state.status != "done"`.
+where `status != "done"`.
 
 ### 5.1 Selecting the Next Task(s) & Group
 
 1. Collect all `.json` files in `.flow/3-plan/`.
-2. Filter to groups that are NOT fully done (at least one subtask with `state.status != "done"`).
+2. Filter to groups that are NOT fully done (at least one subtask with `status != "done"`).
 3. Among eligible groups, respect `depends_on_tasks`: skip a group if any of its prerequisite
-   groups (identified by stable `group` id) still have subtasks with `state.status != "done"`.
+   groups (identified by stable `group` id) still have subtasks with `status != "done"`.
 4. From the first eligible group (array order), find ALL subtasks where
-   `state.status == "pending"` AND all `depends_on` task IDs resolve to tasks with
-   `state.status == "done"`.
+   `status == "pending"` AND all `depends_on` task IDs resolve to tasks with
+   `status == "done"`.
 5. **Parallel dispatch:** Among the eligible subtasks from step 4, check for pairwise
    dependency-disjointness. Two tasks are disjoint when neither's `depends_on` set (transitively)
-   includes the other, and their `target_paths` sets do not overlap. Dispatch ALL disjoint-eligible
+   includes the other, and their `files.touches` sets do not overlap. Dispatch ALL disjoint-eligible
    tasks simultaneously by invoking the corresponding agents in parallel.
    - If only one task is eligible, dispatch it alone (no change from before).
-   - If multiple tasks are eligible but share `target_paths` overlap, dispatch only the first
+   - If multiple tasks are eligible but share `files.touches` overlap, dispatch only the first
      (array order) to avoid file conflicts.
 6. If no eligible task in the current group but the group is fully done → move to the next group
    (return to step 2). If all groups are done → proceed to Section 6 (Completion).
 7. If some tasks are `pending` but all are blocked by unmet `depends_on` → report the deadlock and stop.
-8. Set `state.status = "in_progress"` on each selected task in the group JSON file before dispatching.
 
-**Group completion:** A group is done when ALL of its subtasks have `state.status == "done"`.
-Do NOT rename files to `*_done.json` — that convention is abolished (see PROTOCOL.md §6).
+**Do NOT modify task status before or during dispatch.** A task keeps `status == "pending"`
+until its worker emits a successful termination line — only then do you set `"done"`.
+There is no `in_progress` status. If a session is interrupted mid-task, the task is simply
+still `pending` and will be re-dispatched on resume.
 
-**Ordering without priority:** Since the `priority` field is dropped, dispatch ordering relies
-solely on the `depends_on` DAG + array position. Tasks with no pending dependencies and
-disjoint `target_paths` may be parallelized.
+**Group completion:** A group is done when ALL of its subtasks have `status == "done"`.
+Do NOT rename files to `*_done.json` — that convention is abolished
+(see PROTOCOL.md Group Completion Detection).
+
 
 ### 5.2 Dispatch Matrix
 
-See PROTOCOL.md §5 for the canonical marker vocabulary.
+See PROTOCOL.md Marker Vocabulary for the canonical marker vocabulary.
 
 | Marker | Dispatch to    | Prompt pattern |
 |--------|----------------|----------------|
@@ -212,50 +196,44 @@ exists at the project root. Create it if missing (idempotent, never overwrites).
 
 ### 5.3 Processing Termination Lines
 
-After each agent completes, parse its termination line (see PROTOCOL.md §1 for the grammar):
+After each agent completes, parse its termination line (see PROTOCOL.md Termination-Line
+Grammar):
 
 **`API_AGENT_DONE: task=<ID> spec=<path> generated_files=<N> skeleton_files=<N> compilation=PASS|FAIL`**
-- `PASS`: set `state.status = "done"` in the group JSON. Log: "API task `<ID>` complete." Return to 5.1.
+- `PASS`: set `status = "done"` in the group JSON. Log: "API task `<ID>` complete." Return to 5.1.
 - `FAIL`: hard stop. Report compilation errors to user.
 
 **`TESTER_DONE: task=<ID> tests_written=<N> compilation=PASS|FAIL|PENDING_IMPL`**
-- `PASS` or `PENDING_IMPL` (Red phase — expected): set `state.status = "done"`. Return to 5.1.
+- `PASS` or `PENDING_IMPL` (Red phase — expected): set `status = "done"`. Return to 5.1.
 - `FAIL` (test code has compilation errors): hard stop. Report to user.
 
 **`DEVELOPER_DONE: task=<ID> files_written=<N> tests=PASS|FAIL [reason=<summary>]`**
-- `tests=PASS`: set `state.status = "done"`. Return to 5.1.
+- `tests=PASS`: set `status = "done"`. Return to 5.1.
 - `tests=FAIL`: **hard stop** — do NOT set done. Report failure and reason to user; wait for instruction.
 
 **`REVIEWER_DONE: task=<ID> verdict=APPROVE|REQUEST_CHANGES ...`**
-- **Mandatory user approval gate:** Present the review outcome to the user:
-  > "Review complete for task `<ID>`. Verdict: `<APPROVE|REQUEST_CHANGES>`.
-  > Please read the review report and reply `approved` to continue,
-  > or describe what should be changed."
-- If user replies `approved`:
-  - `APPROVE`: set `state.status = "done"` for the `[REVIEW]` task. Return to 5.1.
-  - `REQUEST_CHANGES`: re-dispatch worker agents for each task in `state.rework_tasks`; reset those
-    tasks to `state.status = "pending"`. Once rework completes, re-dispatch reviewer.
-- If user provides additional feedback: treat as rework instructions; re-dispatch accordingly.
+- `APPROVE`: present a short review summary to the user for visibility (no approval required),
+  set `status = "done"` for the `[REVIEW]` task, and return to 5.1.
+- `REQUEST_CHANGES` — **mandatory user approval gate:** present the review outcome:
+  > "Review complete for task `<ID>`. Verdict: `REQUEST_CHANGES`.
+  > Please read the review report and reply `approved` to start the rework,
+  > or describe what should be changed instead."
+  - If user replies `approved`: reset each task in `rework_tasks` to `status = "pending"` and
+    re-dispatch the corresponding worker agents. Once rework completes, re-dispatch reviewer.
+  - If user provides additional feedback: treat it as rework instructions; re-dispatch accordingly.
 
 **`POSTMAN_DONE: task=<ID> group=<name> collection=<path> requests=<N> validation=PASS|FAIL`**
-- `PASS`: set `state.status = "done"`. Return to 5.1.
+- `PASS`: set `status = "done"`. Return to 5.1.
 - `FAIL`: hard stop. Report validation errors to user.
 
 **Unrecognized termination line or no termination line found:** hard stop (see Section 2).
-
-### 5.4 In-progress Tasks on Resume
-
-If a group JSON file is loaded and any task has `state.status == "in_progress"`:
-- The previous session was interrupted mid-task.
-- Inform the user: "Resuming flow. Task `<ID>` was in progress and has been reset to pending."
-- Set `state.status = "pending"` and continue from 5.1.
 
 ---
 
 ## 6. COMPLETION
 
 **Triggered by:** All groups in `.flow/3-plan/` are fully done (every subtask
-`state.status == "done"`). See PROTOCOL.md §6 for group-completion detection.
+`status == "done"`). See PROTOCOL.md Group Completion Detection.
 
 1. Build a completion report:
    ```
@@ -289,21 +267,21 @@ If a group JSON file is loaded and any task has `state.status == "in_progress"`:
 - **Agent tool calls are mandatory.** Every place in this document that says "Dispatch X subagent"
   requires an ACTUAL `Agent` tool invocation with `subagent_type="X"`. This is not pseudo-code —
   call the tool.
-- **Never skip approval gates** after architect, planner or review phases. These are the user's primary
-  control points before irreversible work begins.
-- **Never delete or overwrite files** outside of task group JSON file `state.status` updates. Report
+- **Never skip approval gates** after the architect and planner phases, and after a
+  `REQUEST_CHANGES` review verdict. These are the user's primary control points before
+  irreversible work begins. An `APPROVE` verdict does not require a user gate — report it and continue.
+- **Never delete or overwrite files** outside of task group JSON file `status` updates. Report
   conflicts instead.
 - **Respect `depends_on` strictly.** Never dispatch a task whose dependencies are not fully `done`.
-- **Parallel dispatch allowed** for dependency-disjoint tasks (no shared `target_paths`, no transitive `depends_on` link). Dispatch them in a single batch of parallel Agent calls. Never dispatch tasks in parallel if they share target files.
+- **Parallel dispatch allowed** for dependency-disjoint tasks (no shared `files.touches`, no transitive `depends_on` link). Dispatch them in a single batch of parallel Agent calls. Never dispatch tasks in parallel if they share target files.
 - **Never push.** The committer-agent commits locally only; it NEVER pushes. Do not attempt to push under any circumstances.
 - **Statelessness:** Do not assume you remember details between worker dispatches. Re-read the
   task files in `.flow/3-plan/` if needed to determine current state.
 - **DEVELOPER_DONE tests=FAIL is a hard stop.** Never mark a task done after a `DEVELOPER_DONE` with `tests=FAIL`.
-  See PROTOCOL.md §1 and Section 5.3 above.
-- **No `_done.json` renaming.** Group completion is detected via `state.status` checks.
-  See PROTOCOL.md §6.
-- **Status vocabulary:** only `pending`, `in_progress`, `done`, `needs_rework`. The value
-  `reviewed` is forbidden. See PROTOCOL.md §2.
+  See PROTOCOL.md Termination-Line Grammar and Section 5.3 above.
+- **Status vocabulary:** only `pending`, `done`, `needs_rework`. The values `reviewed` and
+  `in_progress` are forbidden. You are the ONLY writer of `done`; never change a task's status
+  until its worker has successfully completed. See PROTOCOL.md Status State Machine.
 - **Safety:** If a worker fails, report the error and wait for user instruction. Do not auto-retry
   unless the fix is trivial and self-evident.
 - **In case of doubt, stop and ask.** The cost of pausing is far lower than the cost of an

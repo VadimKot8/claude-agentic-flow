@@ -22,7 +22,7 @@ Activate after `api-generate-code` has run.
 ## Logic
 
 ### 1. Compilation
-Run `./gradlew compileJava`.
+Run the compile task (see `CLAUDE.md` Build Task Vocabulary).
 
 ### 2. Retry Loop (Max 3 attempts)
 If failure occurs:
@@ -39,5 +39,5 @@ Using the **active format skill's verification checklist**, confirm:
 
 ## Rules
 - **Fix the Source:** If generated code is wrong, fix the **spec**, not the generated code.
-- **Clean Build:** Try `./gradlew clean` before re-running if errors persist unexpectedly.
+- **Clean Build:** Try `clean` task before re-running if errors persist unexpectedly.
 - **Format-skill-guided:** What to verify (paths, names, field shapes) comes from the active format skill, not from this skill.

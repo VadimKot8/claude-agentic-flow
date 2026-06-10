@@ -1,6 +1,6 @@
 ---
 name: api-openapi
-description: "Use when the task requires authoring or generating an OpenAPI 3.x REST spec, configuring the openApiGenerate Gradle plugin, or verifying generated Spring MVC controller interfaces and DTOs."
+description: "Use when the task requires authoring or generating an OpenAPI 3.x REST spec, configuring the OpenAPI generator plugin (Gradle or Maven), or verifying generated Spring MVC controller interfaces and DTOs. Also the reference for REST design principles (resource naming, HTTP semantics, status codes, error shape) and REST security checks."
 ---
 
 # OpenAPI 3.x Format Skill
@@ -8,7 +8,7 @@ description: "Use when the task requires authoring or generating an OpenAPI 3.x 
 ## When to Use
 
 Activate this skill when the task description contains any of: OpenAPI, OAS, REST, YAML spec,
-swagger, HTTP endpoints, paths, `voting-api.yaml`, controller interface, DTO.
+swagger, HTTP endpoints, paths, controller interface, DTO.
 
 ---
 
@@ -85,88 +85,21 @@ components:
 
 ---
 
-## Gradle Toolchain
-
-### Required Plugin
-
-Add to the `plugins {}` block in `build.gradle.kts`:
-
-```kotlin
-id("org.openapi.generator") version "7.12.0"
-```
-
-### Full Configuration Block
-
-Add after the `plugins {}` block:
-
-```kotlin
-openApiGenerate {
-    generatorName.set("spring")
-    inputSpec.set("$projectDir/src/main/resources/openapi/<spec-name>.yaml")  // replace <spec-name> with actual filename from task
-    outputDir.set(layout.buildDirectory.dir("generate-resources/main").get().asFile.toString())
-    apiPackage.set("com.agents_test.voting.api")
-    modelPackage.set("com.agents_test.voting.dto")
-    configOptions.set(mapOf(
-        "interfaceOnly"                    to "true",
-        "useTags"                          to "true",
-        "useSpringBoot3"                   to "true",   // selects jakarta.* imports; required for SB3+ including SB4
-        "documentationProvider"            to "none",
-        "skipDefaultInterface"             to "true",
-        "openApiNullable"                  to "false",
-        "additionalModelTypeAnnotations"   to "@lombok.Builder\n@lombok.AllArgsConstructor"  // requires lombok compileOnly + annotationProcessor deps
-    ))
-}
-
-sourceSets {
-    main {
-        java {
-            srcDir(layout.buildDirectory.dir("generate-resources/main/src/main/java"))
-        }
-    }
-}
-
-tasks.compileJava {
-    dependsOn(tasks.openApiGenerate)
-}
-```
-
-### Required Runtime Dependencies
-
-Add to the `dependencies {}` block:
-
-```kotlin
-implementation("jakarta.validation:jakarta.validation-api")
-implementation("io.swagger.core.v3:swagger-annotations:2.2.28")
-compileOnly("org.projectlombok:lombok:1.18.34")
-annotationProcessor("org.projectlombok:lombok:1.18.34")
-```
-
-### Applying to build.gradle.kts (non-destructive)
-
-Before writing any Gradle changes:
-1. Read `build.gradle.kts`.
-2. If the `org.openapi.generator` plugin is **already present** — do not add it again.
-3. If the `openApiGenerate {}` block is **already present** — note its `inputSpec`, `outputDir`,
-   `apiPackage`, and `modelPackage` values; do not overwrite them.
-4. Add only the missing pieces (plugin, config block, dependencies, `sourceSets`, `compileJava` dependency).
-
----
-
 ## Output Paths
 
-| What | Default Path |
+| What | Default Path (Gradle / Maven) |
 |------|-------------|
 | Spec file | `src/main/resources/openapi/<name>.yaml` |
-| Generated API interfaces | `build/generate-resources/main/src/main/java/<apiPackage>/` |
-| Generated DTO classes | `build/generate-resources/main/src/main/java/<modelPackage>/` |
+| Generated API interfaces | `build/generate-resources/main/src/main/java/<apiPackage>/` / `target/generated-sources/openapi/src/main/java/<apiPackage>/` |
+| Generated DTO classes | `build/generate-resources/main/src/main/java/<modelPackage>/` / `target/generated-sources/openapi/src/main/java/<modelPackage>/` |
 
-If `inputSpec` is already set in `build.gradle.kts`, write the spec to that path instead of the default.
+If `Output Paths` are already configured, write the spec to that path instead of the default.
 
 ---
 
 ## Verification Checklist
 
-After running `./gradlew openApiGenerate`:
+After running the OpenAPI code-generation task (`openApiGenerate` on Gradle; `mvn generate-sources` with `openapi-generator-maven-plugin` on Maven):
 
 - [ ] Spec file exists at the configured/default path
 - [ ] API interface files exist: one `*Api.java` per tag (e.g., `VotersApi.java`, `ElectionsApi.java`)
@@ -175,4 +108,4 @@ After running `./gradlew openApiGenerate`:
 - [ ] DTO fields match schema property names (camelCase in Java)
 - [ ] Generated controller interfaces: `@Valid` on `@RequestBody` parameters for request schemas
 - [ ] Generated DTO classes: `@NotNull` on required fields, `@Size` on string fields with `minLength`/`maxLength`
-- [ ] `./gradlew compileJava` exits with BUILD SUCCESSFUL
+- [ ] The compile task exits successfully (`./gradlew compileJava` BUILD SUCCESSFUL / `mvn compile` BUILD SUCCESS)

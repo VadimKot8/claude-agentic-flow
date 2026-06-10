@@ -36,10 +36,9 @@
     "Subtask": {
       "type": "object",
       "required": [
-        "id", "title", "marker", "depends_on",
-        "skills", "target_paths", "produces", "consumes",
-        "instruction", "constraints", "acceptance_criteria",
-        "spec_ref", "state"
+        "id", "title", "marker", "depends_on", "skills",
+        "files", "instruction", "acceptance_criteria",
+        "spec_ref", "status"
       ],
       "additionalProperties": false,
       "properties": {
@@ -55,7 +54,7 @@
         "marker": {
           "type": "string",
           "enum": ["CONFIG", "API", "DEVELOP", "TEST", "POSTMAN", "REVIEW"],
-          "description": "Bare token dispatch key. See PROTOCOL.md §5 for agent routing."
+          "description": "Bare token dispatch key. See PROTOCOL.md Marker Vocabulary for agent routing."
         },
         "depends_on": {
           "type": "array",
@@ -68,39 +67,39 @@
           "items": { "type": "string" },
           "description": "Skill names the worker must activate (e.g. ['implement-service', 'implement-mapper'])."
         },
-        "target_paths": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Repository-relative paths of files this task creates or modifies."
-        },
-        "produces": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Fully-qualified Java types or file paths this task creates (enables dependency analysis and Postman controller detection)."
-        },
-        "consumes": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "Fully-qualified types or generated symbols this task depends on (avoids workers needing to grep the repo)."
+        "files": {
+          "type": "object",
+          "required": ["touches", "depends_on_types"],
+          "additionalProperties": false,
+          "description": "File and type footprint of this task.",
+          "properties": {
+            "touches": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Repo-relative paths this task creates or modifies."
+            },
+            "depends_on_types": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Fully-qualified types or generated symbols (e.g. OpenAPI DTOs) this task needs as input. Empty array if none."
+            }
+          }
         },
         "instruction": {
-          "type": "string",
-          "description": "What to build — pure instruction, no acceptance criteria or constraints here."
-        },
-        "constraints": {
           "type": "array",
+          "minItems": 1,
           "items": { "type": "string" },
-          "description": "Spec rules that limit how to build it (e.g. 'No @Transactional', '409 via real DB constraint')."
+          "description": "What to build, as a short ordered list of steps. Each entry should fit on one line."
         },
         "acceptance_criteria": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "The sole contract for DEVELOP and TEST tasks. Non-empty on DEVELOP/TEST; empty array on CONFIG/REVIEW. Single-sourced — not duplicated in instruction."
+          "description": "Everything that must hold true when the task is done — both spec constraints (e.g. 'No @Transactional') and behavioral checks (e.g. 'Returns 409 when voter is BLOCKED'). Non-empty on DEVELOP/TEST; empty array on CONFIG/REVIEW."
         },
         "api_format": {
-          "type": ["string", "null"],
-          "enum": ["openapi", "protobuf", "asyncapi", "soap", null],
-          "description": "MUST be set on [API] tasks only. MUST be null or absent on all other markers."
+          "type": "string",
+          "enum": ["openapi", "protobuf", "asyncapi", "soap"],
+          "description": "MUST be set on [API] tasks only. Omit entirely on non-API tasks."
         },
         "user_stories_covered": {
           "type": "array",
@@ -120,32 +119,25 @@
             "sections": {
               "type": "array",
               "items": { "type": "string" },
-              "description": "Stable section heading anchors within the doc (e.g. ['## Service Layer', '## Exception Strategy'])."
+              "description": "Stable section heading anchors within the doc (e.g. ['## Service Layer'])."
             }
           }
         },
-        "state": {
-          "type": "object",
-          "required": ["status", "review_verdict", "rework_tasks"],
-          "additionalProperties": false,
-          "description": "Runtime execution state. Planner writes initial values; workers and Orchestrator mutate during execution.",
-          "properties": {
-            "status": {
-              "type": "string",
-              "enum": ["pending", "in_progress", "done", "needs_rework"],
-              "description": "Current task status. See PROTOCOL.md §2 for the full state machine."
-            },
-            "review_verdict": {
-              "type": ["string", "null"],
-              "enum": ["APPROVE", "REQUEST_CHANGES", null],
-              "description": "Set by reviewer-agent on [REVIEW] tasks. Null until reviewed."
-            },
-            "rework_tasks": {
-              "type": "array",
-              "items": { "type": "string" },
-              "description": "Task IDs that need rework after a REQUEST_CHANGES verdict. Populated by reviewer-agent."
-            }
-          }
+        "status": {
+          "type": "string",
+          "enum": ["pending", "done", "needs_rework"],
+          "description": "Current task status. Planner always writes 'pending'. Only the Orchestrator sets 'done'. See PROTOCOL.md Status State Machine."
+        },
+        "review_verdict": {
+          "type": "string",
+          "enum": ["APPROVE", "REQUEST_CHANGES"],
+          "description": "Set by reviewer-agent on [REVIEW] tasks once reviewed. Absent until then."
+        },
+        "rework_tasks": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "Task IDs that need rework after a REQUEST_CHANGES verdict. Added by reviewer-agent only when non-empty."
         }
       },
       "if": {

@@ -1,6 +1,6 @@
 ---
 name: implement-entity
-description: "Implements JPA entities, enums, value objects, and Flyway migrations to project standards. Use when a [DEVELOP] task adds or changes a persistence type."
+description: "Implements JPA entities, enums, value objects, and db migrations to project standards. Use when a [DEVELOP] task adds or changes a persistence type."
 ---
 
 # Implement Entity Skill
@@ -9,11 +9,12 @@ Use this skill when implementing the domain layer, specifically JPA entities and
 
 ## JPA Entity Mandates
 
-- **No Lombok:** Always use plain Java with standard getters and setters.
-- **ID Strategy:** Use UUID server-generated IDs. Annotate the field with
-  `@GeneratedValue(strategy = GenerationType.UUID)` and `@Column(updatable = false, nullable = false)`.
-  Do NOT use `@GeneratedValue(strategy = GenerationType.IDENTITY)` or `AUTO`.
-- **ID Type:** `UUID` (from `java.util.UUID`). Do NOT use `Long`.
+- **Lombok:** If project uses Lombok, use it. If no, use plain Java with standard getters and setters.
+- **ID Strategy:** Check existing entities and follow their ID Strategy. If there is no entities prefer to use
+  UUID server-generated IDs and annotate the field with `@GeneratedValue(strategy = GenerationType.UUID)` and 
+  `@Column(updatable = false, nullable = false)`. Do NOT use `@GeneratedValue(strategy = GenerationType.IDENTITY)`
+  or `AUTO`.
+- **ID Type:** Use project defined, if no, prefer to use `UUID` (from `java.util.UUID`).
 - **Table Naming:** Always use `@Table(name = "...")` with pluralized snake_case names (e.g., `voters`, `elections`).
 - **Audit Fields:** Use `OffsetDateTime` for timestamps. Use `@Column(updatable = false)` for `createdAt`.
 - **Lifecycle Hooks:** Use `@PrePersist` to set `createdAt` if null. Avoid complex lifecycle logic in entities.
@@ -25,12 +26,12 @@ Use this skill when implementing the domain layer, specifically JPA entities and
 - **Persistence:** Always use `@Enumerated(EnumType.STRING)` for enum fields in entities.
 - **Location:** Keep enums in the same package as the entity they primarily support, or a `model` subpackage.
 
-## DB Migration (Flyway)
+## DB Migration
 
-- **Tool:** Flyway **only** — Liquibase is not used in this project.
-- **Location:** `src/main/resources/db/migration/`
-- **Naming:** `V<N>__<description>.sql` (e.g., `V1__create_voters.sql`).
-- **Constraints:** Define primary keys, foreign keys, and unique constraints in SQL.
+- **Tool:** project defined, if not - Flyway.
+- **Location:** project defined, if not - `src/main/resources/db/migration/`
+- **Naming:** due to tool requirements (e.g., `V1__create_voters.sql` for Flyway).
+- **Constraints:** Define primary keys, foreign keys, and unique constraints.
 - **ID column type:** `UUID` (not `BIGSERIAL`). Example: `id UUID NOT NULL`.
 - **Other types:** `VARCHAR(N)` for strings, `TIMESTAMPTZ` for `OffsetDateTime`.
 

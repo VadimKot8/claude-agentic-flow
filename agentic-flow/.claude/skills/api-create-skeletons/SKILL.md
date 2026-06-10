@@ -22,8 +22,6 @@ Create minimal stubs in `src/main/java/`:
 - **Enums:** Declare with all values listed.
 - **Interfaces:** Declare with method signatures; no body.
 - **Classes:** Declare with required fields; throw `UnsupportedOperationException("stub")`.
-  Use classic Java classes with getters/setters. **Do NOT use Records** — Records are prohibited
-  for DTOs and data-carrier types (project policy, see `.claude/PROTOCOL.md §4`).
 
 ## Rules
 - **Minimalist:** Write only what is strictly necessary to satisfy the reference.

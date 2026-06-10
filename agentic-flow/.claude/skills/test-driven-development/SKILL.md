@@ -1,17 +1,9 @@
 ---
 name: test-driven-development
 description: "Red-Green-Refactor discipline and test-first ordering rules. Use to decide the SEQUENCE of test vs implementation work — when to write tests, when to implement, and when to refactor."
-risk: unknown
-source: community
-date_added: "2026-02-27"
 ---
 
 # Test-Driven Development (TDD)
-
-> **Project note (voting — Spring Boot 4 / Gradle):**
-> This is a generic community skill. Its TypeScript/Jest code examples are for illustration only.
-> All `npm test` commands in this skill mean `./gradlew test --tests "com.agents_test.voting.<TestClass>"` in this project.
-> The Red-Green-Refactor discipline and ordering rules apply unchanged.
 
 ## Overview
 
@@ -53,26 +45,28 @@ Implement fresh from tests. Period.
 
 ## Red-Green-Refactor
 
-```dot
-digraph tdd_cycle {
-    rankdir=LR;
-    red [label="RED\nWrite failing test", shape=box, style=filled, fillcolor="#ffcccc"];
-    verify_red [label="Verify fails\ncorrectly", shape=diamond];
-    green [label="GREEN\nMinimal code", shape=box, style=filled, fillcolor="#ccffcc"];
-    verify_green [label="Verify passes\nAll green", shape=diamond];
-    refactor [label="REFACTOR\nClean up", shape=box, style=filled, fillcolor="#ccccff"];
-    next [label="Next", shape=ellipse];
+```mermaid
+flowchart LR
+    red["RED<br/>Write failing test"]
+    verify_red{"Verify fails<br/>correctly"}
+    green["GREEN<br/>Minimal code"]
+    verify_green{"Verify passes<br/>All green"}
+    refactor["REFACTOR<br/>Clean up"]
+    next(["Next"])
 
-    red -> verify_red;
-    verify_red -> green [label="yes"];
-    verify_red -> red [label="wrong\nfailure"];
-    green -> verify_green;
-    verify_green -> refactor [label="yes"];
-    verify_green -> green [label="no"];
-    refactor -> verify_green [label="stay\ngreen"];
-    verify_green -> next;
-    next -> red;
-}
+    red --> verify_red
+    verify_red -->|yes| green
+    verify_red -->|wrong<br/>failure| red
+    green --> verify_green
+    verify_green -->|yes| refactor
+    verify_green -->|no| green
+    refactor -->|stay<br/>green| verify_green
+    verify_green --> next
+    next --> red
+
+    style red fill:#ffcccc
+    style green fill:#ccffcc
+    style refactor fill:#ccccff
 ```
 
 ### RED - Write Failing Test
@@ -80,34 +74,38 @@ digraph tdd_cycle {
 Write one minimal test showing what should happen.
 
 <Good>
-```typescript
-test('retries failed operations 3 times', async () => {
-  let attempts = 0;
-  const operation = () => {
-    attempts++;
-    if (attempts < 3) throw new Error('fail');
-    return 'success';
-  };
 
-  const result = await retryOperation(operation);
+```java
+@Test
+void retriesFailedOperationsThreeTimes() {
+    var attempts = new AtomicInteger();
+    Supplier<String> operation = () -> {
+        if (attempts.incrementAndGet() < 3) throw new RuntimeException("fail");
+        return "success";
+    };
 
-  expect(result).toBe('success');
-  expect(attempts).toBe(3);
-});
+    String result = retryOperation(operation);
+
+    assertEquals("success", result);
+    assertEquals(3, attempts.get());
+}
 ```
 Clear name, tests real behavior, one thing
 </Good>
 
 <Bad>
-```typescript
-test('retry works', async () => {
-  const mock = jest.fn()
-    .mockRejectedValueOnce(new Error())
-    .mockRejectedValueOnce(new Error())
-    .mockResolvedValueOnce('success');
-  await retryOperation(mock);
-  expect(mock).toHaveBeenCalledTimes(3);
-});
+
+```java
+@Test
+void retryWorks() {
+    Supplier<String> mock = mock(Supplier.class);
+    when(mock.get())
+        .thenThrow(new RuntimeException())
+        .thenThrow(new RuntimeException())
+        .thenReturn("success");
+    retryOperation(mock);
+    verify(mock, times(3)).get();
+}
 ```
 Vague name, tests mock not code
 </Bad>
@@ -122,7 +120,11 @@ Vague name, tests mock not code
 **MANDATORY. Never skip.**
 
 ```bash
-npm test path/to/test.test.ts
+# Gradle
+./gradlew test --tests "com.example.RetryOperationTest"
+
+# Maven
+mvn test -Dtest=RetryOperationTest
 ```
 
 Confirm:
@@ -139,32 +141,31 @@ Confirm:
 Write simplest code to pass the test.
 
 <Good>
-```typescript
-async function retryOperation<T>(fn: () => Promise<T>): Promise<T> {
-  for (let i = 0; i < 3; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      if (i === 2) throw e;
+
+```java
+static <T> T retryOperation(Supplier<T> fn) {
+    for (int i = 0; i < 3; i++) {
+        try {
+            return fn.get();
+        } catch (RuntimeException e) {
+            if (i == 2) throw e;
+        }
     }
-  }
-  throw new Error('unreachable');
+    throw new IllegalStateException("unreachable");
 }
 ```
 Just enough to pass
 </Good>
 
 <Bad>
-```typescript
-async function retryOperation<T>(
-  fn: () => Promise<T>,
-  options?: {
-    maxRetries?: number;
-    backoff?: 'linear' | 'exponential';
-    onRetry?: (attempt: number) => void;
-  }
-): Promise<T> {
-  // YAGNI
+
+```java
+record RetryOptions(int maxRetries, Backoff backoff, IntConsumer onRetry) {}
+
+enum Backoff { LINEAR, EXPONENTIAL }
+
+static <T> T retryOperation(Supplier<T> fn, RetryOptions options) {
+    // YAGNI
 }
 ```
 Over-engineered
@@ -177,7 +178,11 @@ Don't add features, refactor other code, or "improve" beyond the test.
 **MANDATORY.**
 
 ```bash
-npm test path/to/test.test.ts
+# Gradle
+./gradlew test
+
+# Maven
+mvn test
 ```
 
 Confirm:
@@ -206,8 +211,8 @@ Next failing test for next feature.
 
 | Quality | Good | Bad |
 |---------|------|-----|
-| **Minimal** | One thing. "and" in name? Split it. | `test('validates email and domain and whitespace')` |
-| **Clear** | Name describes behavior | `test('test1')` |
+| **Minimal** | One thing. "and" in name? Split it. | `void validatesEmailAndDomainAndWhitespace()` |
+| **Clear** | Name describes behavior | `void test1()` |
 | **Shows intent** | Demonstrates desired API | Obscures what code should do |
 
 ## Why Order Matters
@@ -299,33 +304,48 @@ Tests-first force edge case discovery before implementing. Tests-after verify yo
 **Bug:** Empty email accepted
 
 **RED**
-```typescript
-test('rejects empty email', async () => {
-  const result = await submitForm({ email: '' });
-  expect(result.error).toBe('Email required');
-});
+
+```java
+@Test
+void rejectsEmptyEmail() {
+    FormResult result = submitForm(new FormData(""));
+    assertEquals("Email required", result.error());
+}
 ```
 
 **Verify RED**
+
 ```bash
-$ npm test
-FAIL: expected 'Email required', got undefined
+# Gradle
+$ ./gradlew test
+FAILED: expected: <Email required> but was: <null>
+
+# Maven
+$ mvn test
+[ERROR] rejectsEmptyEmail: expected: <Email required> but was: <null>
 ```
 
 **GREEN**
-```typescript
-function submitForm(data: FormData) {
-  if (!data.email?.trim()) {
-    return { error: 'Email required' };
-  }
-  // ...
+
+```java
+FormResult submitForm(FormData data) {
+    if (data.email() == null || data.email().isBlank()) {
+        return FormResult.error("Email required");
+    }
+    // ...
 }
 ```
 
 **Verify GREEN**
+
 ```bash
-$ npm test
-PASS
+# Gradle
+$ ./gradlew test
+BUILD SUCCESSFUL
+
+# Maven
+$ mvn test
+[INFO] BUILD SUCCESS
 ```
 
 **REFACTOR**
